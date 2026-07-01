@@ -3,9 +3,44 @@
 [![CI](https://github.com/PlatformStackPulse/tf-molecule-rds-postgres-aws/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformStackPulse/tf-molecule-rds-postgres-aws/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/terraform-%3E%3D1.6.0-blueviolet)
 
-## Purpose
+Production-grade PostgreSQL RDS molecule for AWS — provisions a managed PostgreSQL instance together with its DB subnet group and a tuned parameter group, with encryption, automated backups, and consistent tf-label naming/tagging.
 
-Production PostgreSQL RDS instance with subnet group placement, tuned parameters, encryption, and backup configuration.
+## Features
+
+- **Managed PostgreSQL instance** — composes the `tf-atom-db-instance-aws` atom (engine pinned to `postgres`, configurable version, instance class, and storage).
+- **Network placement** — creates a DB subnet group across the supplied subnets (minimum 2 AZs) via `tf-atom-db-subnet-group-aws`.
+- **Tuned parameters** — dedicated parameter group (`tf-atom-db-parameter-group-aws`) with a configurable family and custom `parameters`.
+- **Encryption at rest** — storage encryption is always enabled.
+- **Autoscaling storage** — `allocated_storage` with an optional `max_allocated_storage` ceiling.
+- **Backups & maintenance** — configurable retention period, backup window, and maintenance window; optional final snapshot and deletion protection.
+- **Resilience** — optional Multi-AZ deployment and Performance Insights.
+- **Consistent naming & tagging** — driven by the embedded `tf-label` (`module.this`) context; supports the `enabled` toggle to create nothing when disabled.
+
+## Usage
+
+```hcl
+module "postgres" {
+  source = "git::https://github.com/PlatformStackPulse/tf-molecule-rds-postgres-aws.git?ref=v1.0.0"
+
+  # tf-label context
+  namespace = "eg"
+  stage     = "prod"
+  name      = "app"
+
+  # required input
+  subnet_ids = ["subnet-aaaa1111", "subnet-bbbb2222"]
+
+  # common overrides (all optional)
+  engine_version         = "16.4"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  vpc_security_group_ids = ["sg-0123456789abcdef0"]
+
+  tags = {
+    Team = "platform"
+  }
+}
+```
 
 ## Module Documentation
 
@@ -89,3 +124,23 @@ No resources.
 | <a name="output_parameter_group_name"></a> [parameter\_group\_name](#output\_parameter\_group\_name) | Name of the parameter group |
 | <a name="output_port"></a> [port](#output\_port) | RDS port |
 <!-- END_TF_DOCS -->
+
+## Tests
+
+This module ships with two suites under `tests/`, built on the native `terraform test` framework:
+
+- **`tests/unit/`** — runs against a `mock_provider "aws"` (no AWS credentials, no real resources). Asserts on plan-known values such as the tf-label-derived subnet/parameter group names and the disabled (`enabled = false`) null-output behaviour.
+- **`tests/integration/`** — provisions real infrastructure and requires AWS credentials.
+
+```bash
+# Unit tests (offline, mock provider)
+make test-unit
+# or:
+terraform init -backend=false
+terraform test -test-directory=tests/unit
+
+# Integration tests (requires AWS credentials)
+make test-integration
+# or:
+terraform test -test-directory=tests/integration
+```
